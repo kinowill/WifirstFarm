@@ -1,0 +1,98 @@
+# WifirstFarm
+
+Renouvelle automatiquement l'accès gratuit Wifirst sur Windows (crédit de 24 h par appareil et
+compte neufs), sans navigation manuelle.
+
+> Projet indépendant, sans lien avec Wifirst. Il automatise une offre publique ; il ne casse aucun
+> chiffrement et ne revend rien.
+
+## Ce que fait le script
+
+Un cycle = une identité neuve, puis 24 h de calme :
+
+1. déconnexion du portail ;
+2. génération et application d'une adresse MAC locale (`02:…`, 12 caractères) ;
+3. vérification que la carte a bien pris la nouvelle adresse ;
+4. relecture de la configuration du hotspot et du fragment `freezone` ;
+5. création d'un compte invité neuf (e-mail et mot de passe aléatoires, CGU acceptées) ;
+6. connexion RADIUS et contrôle réel de l'accès ;
+7. surveillance : réveil du portail si la session tombe, sinon nouveau cycle.
+
+La MAC d'origine est sauvegardée au premier lancement et restaurée sur `Ctrl+C`.
+
+## Prérequis
+
+- Windows 10/11, PowerShell 5.1, droits administrateur, `curl.exe` (fourni avec Windows) ;
+- une carte Wi-Fi dont le pilote accepte le changement d'adresse MAC ;
+- être à portée d'un hotspot Wifirst **avec une offre gratuite**.
+
+## Utilisation
+
+- `Wifirst.vbs` : ouvre la fenêtre de contrôle. Elle démarre le service toute seule et affiche
+  l'état, la MAC en cours, l'e-mail et le mot de passe du compte actif, avec boutons de copie.
+- `Wifirst-Farm.bat` : même service, sans fenêtre de contrôle.
+- `powershell -ExecutionPolicy Bypass -File Wifirst-Farm.ps1 -Once` : un seul cycle.
+- `powershell -ExecutionPolicy Bypass -File Wifirst-Farm.ps1 -Restore` : rend la MAC d'origine.
+- `powershell -ExecutionPolicy Bypass -File Wifirst-Farm.ps1 -Ssid "Nom"` : impose le réseau à
+  rejoindre au lieu de reprendre celui de l'interface.
+
+Une seule identité à la fois : pendant que le service tourne, ne reste pas connecté au portail dans
+le navigateur, sinon les deux sessions se disputent la même MAC.
+
+Réglages en tête de `Wifirst-Farm.ps1` : interface, SSID, délais. Par défaut, le SSID du réseau
+auquel l'interface est déjà associée est repris ; `-Ssid "Nom"` en impose un autre.
+
+## Fichiers
+
+| Fichier | Rôle |
+| --- | --- |
+| `Wifirst-Farm.ps1` | moteur : cycle, surveillance, restauration de la MAC |
+| `Wifirst-App.ps1` | fenêtre de contrôle |
+| `Wifirst.vbs` | lanceur discret de la fenêtre de contrôle |
+| `Wifirst-Farm.bat` | lanceur d'un cycle en administrateur |
+
+Les dossiers `logs/` et `state/` sont créés au lancement et ignorés par Git.
+
+## Scripts de test
+
+Dossier `scripts/`, à lancer en administrateur, connecté au hotspot : ils attaquent le portail en
+vrai et écrivent dans `logs/`.
+
+| Script | Rôle |
+| --- | --- |
+| `T-1-mac.ps1` | applique une MAC au hasard, vérifie qu'elle passe, annule sinon |
+| `T-2-compte.ps1` | crée un compte invité sur la MAC courante |
+| `T-3-cycle.ps1` | cycle complet, entièrement journalisé |
+| `one-shot.ps1` | même chose en une seule passe, sans reprise |
+| `dbg-*.ps1` | appels unitaires au portail (jeton, formulaire, en-têtes, fragment) pour diagnostiquer une panne |
+
+## Fonctionnement interne
+
+Le portail est une application React. Le script reproduit ses appels :
+
+- `GET https://wireless.wifirst.net/index.txt` → jeton de box ;
+- `GET https://portal-front.wifirst.net/api/settings?force_production=false` → fragment `freezone`
+  et champs exigés ;
+- `POST https://portal-front.wifirst.net/api/end_users` → création du compte, renvoie un couple
+  `radius` ;
+- `POST https://wireless.wifirst.net/goform/HtmlLoginRequest` → connexion.
+
+Le fragment est toujours relu : ses identifiants changent d'un hotspot à l'autre. Un `401` signifie
+« quota de cet appareil épuisé » et déclenche une nouvelle MAC.
+
+## Limites connues
+
+- Les champs du formulaire sont imposés par le serveur ; le script les lit et s'y conforme, mais une
+  refonte du portail peut le casser.
+- Le crédit réel dépend du hotspot ; le chien de garde recrée un cycle si la session tombe avant.
+- Wifirst peut limiter ou bloquer un usage intensif.
+- Testé sur un seul modèle de carte et un seul hotspot.
+
+## Avertissement
+
+Wifirst peut modifier son portail ou ses conditions à tout moment. Aucun engagement de durée.
+Usage personnel recommandé.
+
+## Licence
+
+MIT, voir `LICENSE`.
